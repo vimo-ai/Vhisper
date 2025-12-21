@@ -22,19 +22,6 @@ impl OllamaLlm {
 }
 
 #[derive(Serialize)]
-struct OllamaRequest {
-    model: String,
-    prompt: String,
-    stream: bool,
-}
-
-#[derive(Deserialize)]
-struct OllamaResponse {
-    response: Option<String>,
-    error: Option<String>,
-}
-
-#[derive(Serialize)]
 struct OllamaChatRequest {
     model: String,
     messages: Vec<Message>,

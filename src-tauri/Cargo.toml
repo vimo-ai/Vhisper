@@ -16,7 +16,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
-tauri-plugin-shell = "2"
+tauri-plugin-shell = "2.3"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -26,7 +26,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 async-trait = "0.1"
 
 # 音频
-cpal = "0.15"
+cpal = "0.16"
 hound = "3.5"
 
 # 图像处理
@@ -34,13 +34,13 @@ png = "0.17"
 
 # 输入输出
 enigo = { version = "0.2", features = ["serde"] }
-arboard = "3.4"
+arboard = "3.6"
 
 # HTTP 客户端
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 
 # WebSocket 客户端 (阿里云实时语音识别)
-tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
 native-tls = "0.2"
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }

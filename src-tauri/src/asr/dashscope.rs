@@ -64,6 +64,7 @@ struct WsResponse {
 
 #[derive(Deserialize, Debug)]
 struct WsResponseHeader {
+    #[allow(dead_code)]
     task_id: String,
     event: String,
     #[serde(default)]
@@ -141,7 +142,7 @@ impl AsrService for DashScopeAsr {
             .map_err(|e| AsrError::Encoding(e.to_string()))?;
 
         write
-            .send(Message::Text(run_task_json))
+            .send(Message::Text(run_task_json.into()))
             .await
             .map_err(|e| AsrError::Network(e.to_string()))?;
 
@@ -210,7 +211,7 @@ impl AsrService for DashScopeAsr {
             .map_err(|e| AsrError::Encoding(e.to_string()))?;
 
         write
-            .send(Message::Text(finish_task_json))
+            .send(Message::Text(finish_task_json.into()))
             .await
             .map_err(|e| AsrError::Network(e.to_string()))?;
 

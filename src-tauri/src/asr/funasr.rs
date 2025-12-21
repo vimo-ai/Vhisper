@@ -92,7 +92,7 @@ impl AsrService for FunAsr {
             .map_err(|e| AsrError::Encoding(e.to_string()))?;
 
         write
-            .send(Message::Text(start_json))
+            .send(Message::Text(start_json.into()))
             .await
             .map_err(|e| AsrError::Network(e.to_string()))?;
 
@@ -111,7 +111,7 @@ impl AsrService for FunAsr {
             .map_err(|e| AsrError::Encoding(e.to_string()))?;
 
         write
-            .send(Message::Text(end_json))
+            .send(Message::Text(end_json.into()))
             .await
             .map_err(|e| AsrError::Network(e.to_string()))?;
 

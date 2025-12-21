@@ -134,7 +134,7 @@ impl AsrService for QwenAsr {
             serde_json::to_string(&session_update).map_err(|e| AsrError::Encoding(e.to_string()))?;
 
         write
-            .send(Message::Text(session_json))
+            .send(Message::Text(session_json.into()))
             .await
             .map_err(|e| AsrError::Network(e.to_string()))?;
 
@@ -191,7 +191,7 @@ impl AsrService for QwenAsr {
                 .map_err(|e| AsrError::Encoding(e.to_string()))?;
 
             write
-                .send(Message::Text(audio_json))
+                .send(Message::Text(audio_json.into()))
                 .await
                 .map_err(|e| AsrError::Network(e.to_string()))?;
         }
@@ -206,7 +206,7 @@ impl AsrService for QwenAsr {
             serde_json::to_string(&commit).map_err(|e| AsrError::Encoding(e.to_string()))?;
 
         write
-            .send(Message::Text(commit_json))
+            .send(Message::Text(commit_json.into()))
             .await
             .map_err(|e| AsrError::Network(e.to_string()))?;
 
