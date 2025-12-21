@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 
 type TabType = 'asr' | 'llm' | 'hotkey';
@@ -25,7 +25,128 @@ const ollamaEndpoint = ref('http://localhost:11434');
 const ollamaModel = ref('qwen3:8b');
 
 // 快捷键配置
-const triggerKey = ref('Alt');
+interface HotkeyBinding {
+  key: string;
+  modifiers: string[];
+}
+const hotkeyBinding = ref<HotkeyBinding>({ key: 'Alt', modifiers: [] });
+const isRecordingHotkey = ref(false);
+const currentModifiers = ref<Set<string>>(new Set());
+
+// 计算快捷键显示文本
+const hotkeyDisplayText = computed(() => {
+  const parts = [...hotkeyBinding.value.modifiers];
+  if (hotkeyBinding.value.key) {
+    // 对于修饰键，在 macOS 上显示更友好的名称
+    const keyName = hotkeyBinding.value.key === 'Alt' ? 'Option' :
+                    hotkeyBinding.value.key === 'Meta' ? 'Command' :
+                    hotkeyBinding.value.key;
+    parts.push(keyName);
+  }
+  return parts.join(' + ') || '点击设置快捷键';
+});
+
+// 键盘事件转换为 KeyCode
+function eventToKeyCode(e: KeyboardEvent): string | null {
+  // 修饰键
+  if (e.key === 'Alt' || e.key === 'Option') return 'Alt';
+  if (e.key === 'Control') return 'Control';
+  if (e.key === 'Shift') return 'Shift';
+  if (e.key === 'Meta') return 'Meta';
+
+  // 功能键
+  if (e.code.startsWith('F') && e.code.length <= 3) return e.code;
+
+  // 字母键
+  if (e.code.startsWith('Key')) return e.code;
+
+  // 数字键
+  if (e.code.startsWith('Digit')) return e.code;
+
+  // 特殊键
+  if (e.code === 'Space') return 'Space';
+  if (e.code === 'Tab') return 'Tab';
+  if (e.code === 'CapsLock') return 'CapsLock';
+  if (e.code === 'Escape') return 'Escape';
+  if (e.code === 'Backquote') return 'Backquote';
+
+  return null;
+}
+
+// 开始录入快捷键
+function startHotkeyRecording() {
+  isRecordingHotkey.value = true;
+  currentModifiers.value.clear();
+}
+
+// 停止录入快捷键
+function stopHotkeyRecording() {
+  isRecordingHotkey.value = false;
+  currentModifiers.value.clear();
+}
+
+// 录入按键
+function recordHotkey(e: KeyboardEvent) {
+  e.preventDefault();
+  if (!isRecordingHotkey.value) return;
+
+  const keyCode = eventToKeyCode(e);
+  if (!keyCode) return;
+
+  // 判断是否是修饰键
+  const isModifier = ['Alt', 'Control', 'Shift', 'Meta'].includes(keyCode);
+
+  if (isModifier) {
+    currentModifiers.value.add(keyCode);
+    // 如果只按了修饰键，将其作为主键
+    hotkeyBinding.value = {
+      key: keyCode,
+      modifiers: []
+    };
+  } else {
+    // 非修饰键作为主键，修饰键作为组合键
+    hotkeyBinding.value = {
+      key: keyCode,
+      modifiers: Array.from(currentModifiers.value)
+    };
+    // 录入完成后停止录入
+    stopHotkeyRecording();
+  }
+}
+
+// 处理按键释放
+function handleKeyUp(e: KeyboardEvent) {
+  e.preventDefault();
+  const keyCode = eventToKeyCode(e);
+  if (keyCode) {
+    currentModifiers.value.delete(keyCode);
+  }
+  // 如果所有键都释放了，停止录入
+  if (currentModifiers.value.size === 0 && isRecordingHotkey.value) {
+    stopHotkeyRecording();
+  }
+}
+
+// 预设快捷键
+function setPresetHotkey(preset: string) {
+  if (preset.includes('+')) {
+    const parts = preset.split('+');
+    hotkeyBinding.value = {
+      key: parts[parts.length - 1],
+      modifiers: parts.slice(0, -1)
+    };
+  } else {
+    hotkeyBinding.value = {
+      key: preset,
+      modifiers: []
+    };
+  }
+}
+
+// 重置快捷键
+function resetHotkey() {
+  hotkeyBinding.value = { key: 'Alt', modifiers: [] };
+}
 
 // 测试状态
 const testingQwen = ref(false);
@@ -158,7 +279,18 @@ async function loadConfig() {
       }
 
       // 加载快捷键配置
-      triggerKey.value = config.hotkey?.trigger_key || 'Alt';
+      if (config.hotkey?.binding) {
+        hotkeyBinding.value = {
+          key: config.hotkey.binding.key || 'Alt',
+          modifiers: config.hotkey.binding.modifiers || []
+        };
+      } else if (config.hotkey?.trigger_key) {
+        // 兼容旧配置
+        hotkeyBinding.value = {
+          key: config.hotkey.trigger_key,
+          modifiers: []
+        };
+      }
     }
   } catch (e) {
     console.error('Failed to load config:', e);
@@ -170,7 +302,13 @@ async function saveConfig() {
   saveMessage.value = null;
   try {
     const config: any = {
-      hotkey: { trigger_key: triggerKey.value, enabled: true },
+      hotkey: {
+        binding: {
+          key: hotkeyBinding.value.key,
+          modifiers: hotkeyBinding.value.modifiers
+        },
+        enabled: true
+      },
       asr: {
         provider: asrProvider.value,
       },
@@ -544,13 +682,47 @@ onMounted(() => {
         <!-- Hotkey Tab -->
         <template v-else-if="activeTab === 'hotkey'">
           <h2>快捷键设置</h2>
+
           <div class="form-group">
-            <label for="trigger-key">触发键</label>
-            <select id="trigger-key" v-model="triggerKey">
-              <option value="Alt">Option / Alt</option>
-              <option value="Control">Control</option>
-            </select>
+            <label>触发键</label>
+            <div class="hotkey-input-container">
+              <input
+                type="text"
+                class="hotkey-input"
+                :value="hotkeyDisplayText"
+                readonly
+                :class="{ recording: isRecordingHotkey }"
+                @focus="startHotkeyRecording"
+                @blur="stopHotkeyRecording"
+                @keydown="recordHotkey"
+                @keyup="handleKeyUp"
+                placeholder="点击此处，然后按下快捷键"
+              />
+              <button
+                class="btn-reset"
+                @click="resetHotkey"
+                v-if="hotkeyBinding.key"
+                type="button"
+              >
+                重置
+              </button>
+            </div>
+            <p class="hint">
+              点击输入框后按下快捷键进行设置。支持单键或组合键。
+            </p>
           </div>
+
+          <div class="form-group">
+            <label>常用快捷键</label>
+            <div class="preset-hotkeys">
+              <button type="button" @click="setPresetHotkey('Alt')" class="preset-btn">Option</button>
+              <button type="button" @click="setPresetHotkey('Control')" class="preset-btn">Control</button>
+              <button type="button" @click="setPresetHotkey('CapsLock')" class="preset-btn">CapsLock</button>
+              <button type="button" @click="setPresetHotkey('F1')" class="preset-btn">F1</button>
+              <button type="button" @click="setPresetHotkey('Control+Space')" class="preset-btn">Ctrl+Space</button>
+            </div>
+          </div>
+
           <p class="hint">按住此键开始录音，松开后进行语音识别并输出文字</p>
         </template>
       </div>
@@ -770,6 +942,79 @@ select:focus {
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Hotkey input styles */
+.hotkey-input-container {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.hotkey-input {
+  flex: 1;
+  padding: 0.75rem;
+  border: 1px solid var(--input-border, #ddd);
+  border-radius: 8px;
+  font-size: 1rem;
+  background: var(--input-bg, #fff);
+  color: var(--text-color, #333);
+  cursor: pointer;
+  text-align: center;
+  font-weight: 500;
+}
+
+.hotkey-input:focus {
+  outline: none;
+  border-color: #007aff;
+}
+
+.hotkey-input.recording {
+  border-color: #ff9500;
+  background: rgba(255, 149, 0, 0.1);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.btn-reset {
+  padding: 0.75rem 1rem;
+  background: var(--btn-secondary-bg, #f0f0f0);
+  border: 1px solid var(--input-border, #ddd);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  color: var(--text-color, #333);
+}
+
+.btn-reset:hover {
+  background: var(--btn-secondary-hover, #e0e0e0);
+}
+
+.preset-hotkeys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.preset-btn {
+  padding: 0.5rem 1rem;
+  background: var(--btn-secondary-bg, #f0f0f0);
+  border: 1px solid var(--input-border, #ddd);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-color, #333);
+  transition: all 0.2s;
+}
+
+.preset-btn:hover {
+  background: var(--active-bg, #007aff);
+  color: #fff;
+  border-color: var(--active-bg, #007aff);
 }
 
 @media (prefers-color-scheme: dark) {

@@ -1,5 +1,186 @@
 use serde::{Deserialize, Serialize};
 
+/// 键码枚举 - 支持所有常用键
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "PascalCase")]
+pub enum KeyCode {
+    // 修饰键
+    Alt,
+    Control,
+    Shift,
+    Meta, // Cmd on macOS, Win on Windows
+
+    // 功能键
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
+
+    // 字母键
+    KeyA,
+    KeyB,
+    KeyC,
+    KeyD,
+    KeyE,
+    KeyF,
+    KeyG,
+    KeyH,
+    KeyI,
+    KeyJ,
+    KeyK,
+    KeyL,
+    KeyM,
+    KeyN,
+    KeyO,
+    KeyP,
+    KeyQ,
+    KeyR,
+    KeyS,
+    KeyT,
+    KeyU,
+    KeyV,
+    KeyW,
+    KeyX,
+    KeyY,
+    KeyZ,
+
+    // 数字键
+    Digit0,
+    Digit1,
+    Digit2,
+    Digit3,
+    Digit4,
+    Digit5,
+    Digit6,
+    Digit7,
+    Digit8,
+    Digit9,
+
+    // 特殊键
+    Space,
+    Tab,
+    CapsLock,
+    Escape,
+    Backquote, // `
+}
+
+impl Default for KeyCode {
+    fn default() -> Self {
+        KeyCode::Alt
+    }
+}
+
+impl KeyCode {
+    /// 判断是否是修饰键
+    pub fn is_modifier(&self) -> bool {
+        matches!(
+            self,
+            KeyCode::Alt | KeyCode::Control | KeyCode::Shift | KeyCode::Meta
+        )
+    }
+
+    /// 获取显示名称
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            KeyCode::Alt => "Alt",
+            KeyCode::Control => "Control",
+            KeyCode::Shift => "Shift",
+            KeyCode::Meta => "Meta",
+            KeyCode::F1 => "F1",
+            KeyCode::F2 => "F2",
+            KeyCode::F3 => "F3",
+            KeyCode::F4 => "F4",
+            KeyCode::F5 => "F5",
+            KeyCode::F6 => "F6",
+            KeyCode::F7 => "F7",
+            KeyCode::F8 => "F8",
+            KeyCode::F9 => "F9",
+            KeyCode::F10 => "F10",
+            KeyCode::F11 => "F11",
+            KeyCode::F12 => "F12",
+            KeyCode::KeyA => "A",
+            KeyCode::KeyB => "B",
+            KeyCode::KeyC => "C",
+            KeyCode::KeyD => "D",
+            KeyCode::KeyE => "E",
+            KeyCode::KeyF => "F",
+            KeyCode::KeyG => "G",
+            KeyCode::KeyH => "H",
+            KeyCode::KeyI => "I",
+            KeyCode::KeyJ => "J",
+            KeyCode::KeyK => "K",
+            KeyCode::KeyL => "L",
+            KeyCode::KeyM => "M",
+            KeyCode::KeyN => "N",
+            KeyCode::KeyO => "O",
+            KeyCode::KeyP => "P",
+            KeyCode::KeyQ => "Q",
+            KeyCode::KeyR => "R",
+            KeyCode::KeyS => "S",
+            KeyCode::KeyT => "T",
+            KeyCode::KeyU => "U",
+            KeyCode::KeyV => "V",
+            KeyCode::KeyW => "W",
+            KeyCode::KeyX => "X",
+            KeyCode::KeyY => "Y",
+            KeyCode::KeyZ => "Z",
+            KeyCode::Digit0 => "0",
+            KeyCode::Digit1 => "1",
+            KeyCode::Digit2 => "2",
+            KeyCode::Digit3 => "3",
+            KeyCode::Digit4 => "4",
+            KeyCode::Digit5 => "5",
+            KeyCode::Digit6 => "6",
+            KeyCode::Digit7 => "7",
+            KeyCode::Digit8 => "8",
+            KeyCode::Digit9 => "9",
+            KeyCode::Space => "Space",
+            KeyCode::Tab => "Tab",
+            KeyCode::CapsLock => "CapsLock",
+            KeyCode::Escape => "Escape",
+            KeyCode::Backquote => "`",
+        }
+    }
+}
+
+/// 快捷键绑定
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HotkeyBinding {
+    /// 主键 (必须) - 触发录音的主要按键
+    #[serde(default)]
+    pub key: KeyCode,
+
+    /// 修饰键 (可选) - 需要同时按住的修饰键
+    #[serde(default)]
+    pub modifiers: Vec<KeyCode>,
+}
+
+impl Default for HotkeyBinding {
+    fn default() -> Self {
+        Self {
+            key: KeyCode::Alt,
+            modifiers: vec![],
+        }
+    }
+}
+
+impl HotkeyBinding {
+    /// 获取显示文本
+    pub fn display_text(&self) -> String {
+        let mut parts: Vec<&str> = self.modifiers.iter().map(|k| k.display_name()).collect();
+        parts.push(self.key.display_name());
+        parts.join(" + ")
+    }
+}
+
 /// 应用配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -27,14 +208,16 @@ impl Default for AppConfig {
 /// 快捷键配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HotkeyConfig {
-    #[serde(default = "default_trigger_key")]
-    pub trigger_key: String,
+    /// 新的快捷键绑定
+    #[serde(default)]
+    pub binding: HotkeyBinding,
+
+    /// 兼容旧配置: 旧的 trigger_key 字段
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_key: Option<String>,
+
     #[serde(default = "default_true")]
     pub enabled: bool,
-}
-
-fn default_trigger_key() -> String {
-    "Alt".to_string()
 }
 
 fn default_true() -> bool {
@@ -44,8 +227,30 @@ fn default_true() -> bool {
 impl Default for HotkeyConfig {
     fn default() -> Self {
         Self {
-            trigger_key: default_trigger_key(),
+            binding: HotkeyBinding::default(),
+            trigger_key: None,
             enabled: true,
+        }
+    }
+}
+
+impl HotkeyConfig {
+    /// 从旧配置迁移
+    pub fn migrate(&mut self) {
+        if let Some(ref old_key) = self.trigger_key {
+            // 旧配置存在，执行迁移
+            self.binding = match old_key.as_str() {
+                "Alt" => HotkeyBinding {
+                    key: KeyCode::Alt,
+                    modifiers: vec![],
+                },
+                "Control" => HotkeyBinding {
+                    key: KeyCode::Control,
+                    modifiers: vec![],
+                },
+                _ => HotkeyBinding::default(),
+            };
+            self.trigger_key = None;
         }
     }
 }

@@ -92,8 +92,9 @@ pub fn run() {
 
             // 启动全局快捷键监听
             let app_handle = app.handle().clone();
+            let hotkey_binding = config.hotkey.binding.clone();
             std::thread::spawn(move || {
-                if let Err(e) = hotkey::start_listener(app_handle) {
+                if let Err(e) = hotkey::start_listener(app_handle, hotkey_binding) {
                     tracing::error!("Failed to start hotkey listener: {}", e);
                 }
             });
