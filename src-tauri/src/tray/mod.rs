@@ -44,8 +44,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<TrayIcon, TrayError> {
         .show_menu_on_left_click(true)  // 左键点击显示菜单
         .tooltip("vhisper - 语音输入")
         .on_tray_icon_event(|_tray, event| {
-            tracing::info!("Tray icon event: {:?}", event);
-
+            // 只记录点击事件，忽略 Enter/Leave 等
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,

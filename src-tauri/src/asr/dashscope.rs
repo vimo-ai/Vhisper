@@ -237,9 +237,14 @@ impl AsrService for DashScopeAsr {
                             if let Some(payload) = response.payload {
                                 if let Some(output) = payload.output {
                                     if let Some(sentence) = output.sentence {
-                                        if sentence.sentence_end {
-                                            if let Some(text) = sentence.text {
-                                                final_text.push_str(&text);
+                                        if let Some(text) = &sentence.text {
+                                            tracing::debug!("ASR partial: {} (end={})", text, sentence.sentence_end);
+                                            // 收集所有结果，不只是 sentence_end
+                                            if sentence.sentence_end {
+                                                final_text = text.clone();
+                                            } else if final_text.is_empty() {
+                                                // 如果还没有最终结果，先保存中间结果
+                                                final_text = text.clone();
                                             }
                                         }
                                     }

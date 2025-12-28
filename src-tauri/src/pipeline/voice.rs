@@ -77,6 +77,36 @@ impl VoicePipeline {
 
         tracing::info!("Processing {} samples at {}Hz", samples.len(), sample_rate);
 
+        // 检测是否全静音
+        let max_amplitude = samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        let avg_amplitude = samples.iter().map(|s| s.abs()).sum::<f32>() / samples.len() as f32;
+        let non_zero_count = samples.iter().filter(|&&s| s != 0.0).count();
+
+        tracing::info!(
+            "Audio stats: max={:.6}, avg={:.6}, non_zero={}/{}, threshold=0.001",
+            max_amplitude, avg_amplitude, non_zero_count, samples.len()
+        );
+
+        // 阈值判断：
+        // < 0.001 = 完全静音（权限问题）
+        // < 0.05  = 音量太低（只有背景噪音）
+        // >= 0.05 = 正常语音
+        if max_amplitude < 0.001 {
+            tracing::warn!(">>> SILENT (amplitude={:.6}) - likely permission issue <<<", max_amplitude);
+            return Err(PipelineError::Other(
+                "录音无声音，请检查麦克风权限是否已授予当前应用".to_string()
+            ));
+        }
+
+        if max_amplitude < 0.05 {
+            tracing::warn!(">>> AUDIO TOO QUIET (amplitude={:.6}) - speak louder or closer <<<", max_amplitude);
+            return Err(PipelineError::Other(
+                "录音音量太低，请靠近麦克风或大声说话".to_string()
+            ));
+        }
+
+        tracing::info!("Audio OK, proceeding to ASR...");
+
         // 编码音频数据
         let audio_data = if config.asr.provider == "OpenAIWhisper" {
             // OpenAI Whisper 需要 WAV 格式
