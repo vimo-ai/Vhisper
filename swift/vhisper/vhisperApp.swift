@@ -75,7 +75,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let jsonData = try? JSONSerialization.data(withJSONObject: config),
            let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("📋 配置 JSON: \(jsonString)")
             VhisperManager.shared.initialize(configJSON: jsonString)
         }
     }
@@ -145,19 +144,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func requestMicrophonePermission() {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                DispatchQueue.main.async {
-                    if granted {
-                        print("✅ 麦克风权限已授权")
-                    } else {
-                        print("⚠️ 麦克风权限被拒绝")
-                    }
-                }
-            }
-        case .denied, .restricted:
-            print("⚠️ 麦克风权限被拒绝，请在系统设置中开启")
-        case .authorized:
-            print("✅ 麦克风权限已授权")
+            AVCaptureDevice.requestAccess(for: .audio) { _ in }
+        case .denied, .restricted, .authorized:
+            break
         @unknown default:
             break
         }
@@ -425,7 +414,6 @@ class HotkeyManager: ObservableObject {
             }
         }
 
-        print("✅ 热键已注册: \(currentHotkey.displayString)")
     }
 
     func unregister() {
@@ -550,7 +538,6 @@ class HotkeyManager: ObservableObject {
             return event
         }
 
-        print("🎹 开始录制热键...")
     }
 
     private func handleHotkeyRecordingKeyDown(event: NSEvent) {
@@ -570,7 +557,6 @@ class HotkeyManager: ObservableObject {
 
             DispatchQueue.main.async {
                 self.pendingHotkey = newHotkey
-                print("🎹 录制到特定修饰键: \(newHotkey.displayString) (keyCode: \(keyCode))")
             }
             return
         }
@@ -585,7 +571,6 @@ class HotkeyManager: ObservableObject {
 
         DispatchQueue.main.async {
             self.pendingHotkey = newHotkey
-            print("🎹 录制到: \(newHotkey.displayString) (keyCode: \(keyCode))")
         }
     }
 
@@ -613,7 +598,6 @@ class HotkeyManager: ObservableObject {
 
                 DispatchQueue.main.async {
                     self.pendingHotkey = newHotkey
-                    print("🎹 录制到特定修饰键(flags): \(newHotkey.displayString)")
                 }
             } else {
                 // 通用修饰键模式（不区分左右）
@@ -626,7 +610,6 @@ class HotkeyManager: ObservableObject {
 
                 DispatchQueue.main.async {
                     self.pendingHotkey = newHotkey
-                    print("🎹 录制到通用修饰键: \(newHotkey.displayString)")
                 }
             }
             recordedModifiers = 0
@@ -645,14 +628,12 @@ class HotkeyManager: ObservableObject {
         saveHotkey()
         stopListeningForNewHotkey()
         register()
-        print("✅ 热键已保存: \(currentHotkey.displayString)")
     }
 
     /// 取消录制
     func cancelHotkeyRecording() {
         stopListeningForNewHotkey()
         register()
-        print("❌ 热键录制已取消")
     }
 
     func stopListeningForNewHotkey() {
@@ -735,10 +716,8 @@ class VhisperManager: ObservableObject {
     func initialize(configJSON: String? = nil) {
         do {
             vhisper = try Vhisper(configJSON: configJSON)
-            print("✅ Vhisper 初始化成功，版本: \(Vhisper.version)")
         } catch {
             errorMessage = "初始化失败: \(error.localizedDescription)"
-            print("❌ Vhisper 初始化失败: \(error)")
         }
     }
 
@@ -780,12 +759,13 @@ class VhisperManager: ObservableObject {
                 self.lastResult = result
                 self.state = .idle
                 self.errorMessage = nil
+                print("🗣️ 识别结果: \(result)")
 
                 insertText(result)
             } catch {
                 self.state = .idle
                 if case Vhisper.VhisperError.cancelled = error {
-                    // 取消不算错误
+                    print("⚠️ 识别已取消")
                 } else {
                     self.errorMessage = error.localizedDescription
                 }
@@ -1158,7 +1138,6 @@ struct SettingsView: View {
 
         if let jsonData = try? JSONSerialization.data(withJSONObject: config),
            let jsonString = String(data: jsonData, encoding: .utf8) {
-            print("📋 更新配置: \(jsonString)")
             VhisperManager.shared.initialize(configJSON: jsonString)
         }
     }

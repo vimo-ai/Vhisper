@@ -67,9 +67,7 @@ class AudioLevelMonitor: ObservableObject {
         do {
             try setupAudioEngine()
             isMonitoring = true
-            print("✅ 音频频谱监听已启动 (FFT)")
         } catch {
-            print("❌ 音频频谱监听启动失败: \(error)")
         }
     }
 
@@ -90,7 +88,6 @@ class AudioLevelMonitor: ObservableObject {
             self.peakLevel = 0.0
         }
 
-        print("✅ 音频频谱监听已停止")
     }
 
     // MARK: - Private Methods

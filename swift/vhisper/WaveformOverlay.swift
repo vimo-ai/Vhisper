@@ -177,12 +177,10 @@ class WaveformOverlayController {
     /// 显示波形窗口
     /// - Parameter monitor: 音频电平监控器
     func show(with monitor: AudioLevelMonitor) {
-        print("🎵 WaveformOverlayController.show() 被调用")
 
         // 创建窗口（如果不存在）
         if window == nil {
             window = WaveformWindow()
-            print("🎵 创建了新的 WaveformWindow")
         }
 
         self.monitor = monitor
@@ -203,7 +201,6 @@ class WaveformOverlayController {
 
         // 显示窗口
         window?.show()
-        print("🎵 窗口已调用 show()，frame: \(window?.frame ?? .zero)")
     }
 
     /// 隐藏波形窗口
