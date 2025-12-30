@@ -5,6 +5,17 @@ node_modules/
 dist/
 src-tauri/target/
 
+# Rust compiled libraries (regenerate with build-xcframework.sh)
+*.a
+*.xcframework/
+src-tauri/crates/vhisper-core/out/
+
+# Swift/Xcode build
+swift/vhisper.xcodeproj/xcuserdata/
+swift/vhisper.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+*.xcuserstate
+
 # IDE
 .idea/
 .vscode/

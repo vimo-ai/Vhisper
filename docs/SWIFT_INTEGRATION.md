@@ -242,7 +242,21 @@ VhisperSwift/
 
 ## 6. 构建配置
 
-### 6.1 Rust 侧
+### 6.1 快速开始
+
+```bash
+# 1. 构建 Rust 静态库和 xcframework
+cd src-tauri/crates/vhisper-core
+./build-xcframework.sh
+
+# 2. 复制到 Swift 项目
+cp -r out/VhisperCore.xcframework ../../../swift/
+
+# 3. 打开 Xcode 项目编译运行
+open ../../../swift/vhisper.xcodeproj
+```
+
+### 6.2 Rust 侧详细说明
 
 ```toml
 # Cargo.toml
@@ -250,29 +264,37 @@ VhisperSwift/
 crate-type = ["lib", "staticlib", "cdylib"]
 ```
 
-构建命令：
+`build-xcframework.sh` 脚本会自动执行：
+
 ```bash
 # 编译两个架构
 cargo build --release --target aarch64-apple-darwin
 cargo build --release --target x86_64-apple-darwin
 
-# 生成头文件
-cbindgen --config cbindgen.toml --output include/vhisper.h
+# 合并为 fat binary (可选)
+lipo -create \
+  target/aarch64-apple-darwin/release/libvhisper_core.a \
+  target/x86_64-apple-darwin/release/libvhisper_core.a \
+  -output out/libvhisper_core.a
 
 # 打包 xcframework
 xcodebuild -create-xcframework \
-  -library target/aarch64-apple-darwin/release/libvhisper_core.a \
+  -library out/libvhisper_core.a \
   -headers include/ \
-  -library target/x86_64-apple-darwin/release/libvhisper_core.a \
-  -headers include/ \
-  -output VhisperCore.xcframework
+  -output out/VhisperCore.xcframework
 ```
 
-### 6.2 Swift 侧
+### 6.3 Swift 侧
 
-- 引入 `VhisperCore.xcframework`
-- Bridging Header 引入 `vhisper.h`
-- Link: `libvhisper_core.a` + 系统框架 (CoreAudio, Security, etc.)
+- 引入 `VhisperCore.xcframework`（需先运行 `build-xcframework.sh` 生成）
+- Bridging Header 引入 `vhisper_core.h`
+- Link: `libvhisper_core.a` + 系统框架 (CoreAudio, Security, SystemConfiguration)
+
+### 6.4 注意事项
+
+- `*.a` 和 `*.xcframework` 是编译产物，已加入 `.gitignore`
+- 首次 clone 项目后需运行 `build-xcframework.sh` 生成
+- 修改 Rust 代码后需重新运行构建脚本
 
 ---
 
