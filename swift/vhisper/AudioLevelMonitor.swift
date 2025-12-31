@@ -41,6 +41,11 @@ class AudioLevelMonitor: ObservableObject {
     private var smoothedLevels: [Float] = Array(repeating: 0.0, count: 20)
     private let smoothingFactor: Float = 0.3 // 平滑系数，越小越平滑
 
+    // 波浪动画 - 每个条独立的目标高度和当前高度
+    private var targetHeights: [Float] = Array(repeating: 0.0, count: 20)
+    private var currentHeights: [Float] = Array(repeating: 0.0, count: 20)
+    private var updateCounter: Int = 0
+
     private init() {
         setupFFT()
     }
@@ -166,39 +171,46 @@ class AudioLevelMonitor: ObservableObject {
         }
     }
 
-    /// 计算波形显示数据 - 中间高两边低的效果
+    /// 计算波形显示数据 - 静音时平，说话时每个条独立随机波动
     private func computeBandLevels(from magnitudes: [Float]) -> [Float] {
-        // 先计算整体音量（取人声频段 100-3000Hz 的能量）
+        // 计算整体音量（人声频段 100-3000Hz）
         let binCount = magnitudes.count
-        let voiceLowBin = 2   // 约 100Hz
-        let voiceHighBin = min(64, binCount - 1)  // 约 3000Hz
+        let voiceLowBin = 2
+        let voiceHighBin = min(64, binCount - 1)
 
         var sum: Float = 0
-        let range = Array(magnitudes[voiceLowBin...voiceHighBin])
-        vDSP_sve(range, 1, &sum, vDSP_Length(range.count))
-        let avgLevel = sum / Float(range.count)
+        for bin in voiceLowBin...voiceHighBin {
+            sum += magnitudes[bin]
+        }
+        let avgMagnitude = sum / Float(voiceHighBin - voiceLowBin + 1)
 
-        // 归一化到 0-1
-        let normalizedLevel = max(0, min(1, (avgLevel + 75) / 50))
+        // 归一化音量到 0-1
+        let volume = max(0, min(1, (avgMagnitude + 70) / 45))
 
-        // 生成中间高两边低的波形
-        var bandLevels = [Float](repeating: 0, count: numberOfBands)
-        let center = Float(numberOfBands - 1) / 2.0
+        let baseHeight: Float = 0.1  // 静音时的基础高度
 
-        for i in 0..<numberOfBands {
-            // 距离中心的比例 (0 = 中心, 1 = 边缘)
-            let distanceFromCenter = abs(Float(i) - center) / center
+        // 每隔几帧更新一次目标高度（控制波动频率）
+        updateCounter += 1
+        if updateCounter >= 3 {
+            updateCounter = 0
 
-            // 高斯形状：中间高，两边低
-            let shape = exp(-distanceFromCenter * distanceFromCenter * 2.5)
+            // 给每个条生成新的随机目标高度
+            for i in 0..<numberOfBands {
+                // 用平方让分布更极端：更多低值，少数高值
+                let raw = Float.random(in: 0.0...1.0)
+                let randomValue = raw * raw  // 平方后大部分在 0-0.25，少数能到 1
 
-            // 加一点随机扰动，让波形更自然
-            let noise = Float.random(in: 0.85...1.15)
-
-            // 最终值 = 基础形状 × 音量 × 随机扰动
-            bandLevels[i] = min(1, shape * normalizedLevel * noise)
+                // 目标高度 = 基础高度 + 音量驱动的随机波动
+                targetHeights[i] = baseHeight + volume * randomValue * 0.9
+            }
         }
 
-        return bandLevels
+        // 当前高度平滑过渡到目标高度
+        let transitionSpeed: Float = 0.3
+        for i in 0..<numberOfBands {
+            currentHeights[i] += (targetHeights[i] - currentHeights[i]) * transitionSpeed
+        }
+
+        return currentHeights
     }
 }
