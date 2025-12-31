@@ -387,7 +387,8 @@ class HotkeyManager: ObservableObject {
         loadHotkey()
     }
 
-    private var isHotkeyPressed = false
+    /// 热键是否按下（公开给 VhisperManager 检查）
+    private(set) var isHotkeyPressed = false
 
     func register() {
         unregister()
@@ -439,16 +440,17 @@ class HotkeyManager: ObservableObject {
         if isPressed && !isHotkeyPressed {
             // 按下
             isHotkeyPressed = true
+            NSLog("\(ts()) 🔽 热键按下")
             DispatchQueue.main.async {
                 VhisperManager.shared.startRecording()
             }
         } else if !isPressed && isHotkeyPressed {
             // 释放
             isHotkeyPressed = false
+            NSLog("\(ts()) 🔼 热键松开")
             DispatchQueue.main.async {
-                if VhisperManager.shared.state == .recording {
-                    VhisperManager.shared.stopRecording()
-                }
+                // 不检查 state，确保资源清理（Final 可能早于热键松开）
+                VhisperManager.shared.stopRecording()
             }
         }
     }
@@ -465,22 +467,21 @@ class HotkeyManager: ObservableObject {
             if hasAnyModifier && !isHotkeyPressed {
                 // 按下
                 isHotkeyPressed = true
+                NSLog("\(ts()) 🔽 热键按下(specific) keyCode=\(keyCode)")
                 DispatchQueue.main.async {
                     VhisperManager.shared.startRecording()
                 }
-            }
-        }
-
-        // 检查修饰键释放
-        if !hasAnyModifier && isHotkeyPressed {
-            // 释放
-            isHotkeyPressed = false
-            DispatchQueue.main.async {
-                if VhisperManager.shared.state == .recording {
+            } else if !hasAnyModifier && isHotkeyPressed {
+                // 松开：必须是同一个 keyCode 的事件才算松开
+                isHotkeyPressed = false
+                NSLog("\(ts()) 🔼 热键松开(specific) keyCode=\(keyCode)")
+                DispatchQueue.main.async {
                     VhisperManager.shared.stopRecording()
                 }
             }
         }
+        // 注意：不再响应其他 keyCode 的 !hasAnyModifier 事件
+        // 这样可以避免输入法切换等干扰导致的误判
     }
 
     private func handleKeyDown(_ event: NSEvent) {
@@ -491,6 +492,7 @@ class HotkeyManager: ObservableObject {
 
         if keyCode == currentHotkey.keyCode && modifiers == currentHotkey.modifiers && !isHotkeyPressed {
             isHotkeyPressed = true
+            NSLog("\(ts()) 🔽 热键按下(key)")
             DispatchQueue.main.async {
                 VhisperManager.shared.startRecording()
             }
@@ -502,10 +504,10 @@ class HotkeyManager: ObservableObject {
 
         if event.type == .keyUp && event.keyCode == currentHotkey.keyCode && isHotkeyPressed {
             isHotkeyPressed = false
+            NSLog("\(ts()) 🔼 热键松开(key)")
             DispatchQueue.main.async {
-                if VhisperManager.shared.state == .recording {
-                    VhisperManager.shared.stopRecording()
-                }
+                // 不检查 state，确保资源清理（Final 可能早于热键松开）
+                VhisperManager.shared.stopRecording()
             }
         }
     }
@@ -679,6 +681,14 @@ extension NSEvent.ModifierFlags {
 
 // MARK: - Vhisper Manager
 
+/// 带毫秒的时间戳
+private func ts() -> String {
+    let now = Date()
+    let formatter = DateFormatter()
+    formatter.dateFormat = "HH:mm:ss.SSS"
+    return formatter.string(from: now)
+}
+
 @MainActor
 class VhisperManager: ObservableObject {
     static let shared = VhisperManager()
@@ -721,64 +731,154 @@ class VhisperManager: ObservableObject {
         }
     }
 
+    // 流式识别累积的文本
+    private var streamingText: String = ""
+
     func startRecording() {
         guard let vhisper = vhisper else {
             errorMessage = "请先配置 API Key"
             return
         }
 
+        // 如果不是 idle，先强制清理
+        if state != .idle {
+            NSLog("\(ts()) ⚠️ 状态异常(\(state))，强制清理后重试")
+            try? vhisper.cancelStreaming()
+            forceCleanup()
+        }
+
         guard state == .idle else { return }
 
+        // 重置流式文本
+        streamingText = ""
+
+        // 启动音频振幅监听并显示波形窗口
+        AudioLevelMonitor.shared.startMonitoring()
+        WaveformOverlayController.shared.show(with: AudioLevelMonitor.shared)
+
         do {
-            try vhisper.startRecording()
+            NSLog("\(ts()) 🎤 开始流式录音...")
+            // 使用流式模式
+            try vhisper.startStreaming { [weak self] event in
+                NSLog("\(ts()) 📥 收到事件: \(event)")
+                DispatchQueue.main.async {
+                    self?.handleStreamingEvent(event)
+                }
+            }
             state = .recording
             errorMessage = nil
             updateAppDelegateIcon(recording: true)
-
-            // 启动音频振幅监听并显示波形窗口
-            AudioLevelMonitor.shared.startMonitoring()
-            WaveformOverlayController.shared.show(with: AudioLevelMonitor.shared)
+            NSLog("\(ts()) ✅ 流式录音已启动, state=\(state)")
         } catch {
+            NSLog("\(ts()) ❌ 流式录音启动失败: \(error)")
             errorMessage = "录音启动失败: \(error.localizedDescription)"
+            WaveformOverlayController.shared.hide()
+            AudioLevelMonitor.shared.stopMonitoring()
+        }
+    }
+
+    /// 处理流式识别事件
+    private func handleStreamingEvent(_ event: Vhisper.StreamingEvent) {
+        switch event {
+        case .partial(let text, let stash):
+            NSLog("\(ts()) 📝 Partial: '\(stash)'")
+            // 更新波形窗口显示的文字
+            WaveformOverlayController.shared.updateText(text: text, stash: stash)
+            // 保存累积文本
+            streamingText = text + stash
+
+        case .final(let text):
+            NSLog("\(ts()) ✅ Final: '\(text)'")
+            lastResult = text
+            errorMessage = nil
+
+            // 输入文字（延迟一点确保修饰键状态稳定）
+            if !text.isEmpty {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    self?.insertText(text)
+                }
+            }
+
+            // 清空波形窗口的文字（为下一句做准备）
+            WaveformOverlayController.shared.clearText()
+
+            // Rust 端会自动重连 ASR，Swift 端只需判断是否应该隐藏波形窗口
+            if HotkeyManager.shared.isHotkeyPressed {
+                // 热键还按着：VAD Final，Rust 端会自动重连，保持录音状态
+                NSLog("\(ts()) 🔄 VAD Final，Rust 端自动重连中...")
+                // state 保持 recording，波形窗口保持显示
+            } else {
+                // 热键已松开：这是 stopStreaming 触发的 Final，真正结束
+                NSLog("\(ts()) 🛑 Final 结束，热键已松开")
+                state = .idle
+                updateAppDelegateIcon(recording: false)
+                WaveformOverlayController.shared.hide()
+                AudioLevelMonitor.shared.stopMonitoring()
+            }
+
+        case .error(let msg):
+            NSLog("\(ts()) ❌ Error: '\(msg)'")
+            // 确保 Rust 端也停止录音
+            try? vhisper?.cancelStreaming()
+            // 错误
+            state = .idle
+            if !msg.lowercased().contains("cancel") {
+                errorMessage = msg
+            }
+            updateAppDelegateIcon(recording: false)
+
+            // 隐藏波形窗口
+            WaveformOverlayController.shared.hide()
+            AudioLevelMonitor.shared.stopMonitoring()
         }
     }
 
     func stopRecording() {
-        guard let vhisper = vhisper, state == .recording else { return }
+        NSLog("\(ts()) 🛑 stopRecording, state=\(state)")
+
+        guard let vhisper = vhisper, state == .recording else {
+            NSLog("\(ts()) ⚠️ stopRecording 跳过: state=\(state)")
+            return
+        }
 
         state = .processing
         updateAppDelegateIcon(recording: false)
 
-        // 隐藏波形窗口并停止监听
-        WaveformOverlayController.shared.hide()
-        AudioLevelMonitor.shared.stopMonitoring()
+        // 停止流式录音（会触发 final 事件）
+        do {
+            NSLog("\(ts()) 📤 调用 stopStreaming...")
+            try vhisper.stopStreaming()
+            NSLog("\(ts()) ✅ stopStreaming 完成")
+        } catch {
+            NSLog("\(ts()) ❌ stopStreaming 失败: \(error)")
+            // 如果停止失败，手动清理
+            forceCleanup()
+            errorMessage = error.localizedDescription
+        }
 
+        // 超时保护：3秒后如果还没收到 final，强制清理
         Task {
-            do {
-                let result = try await vhisper.stopRecording()
-                self.lastResult = result
-                self.state = .idle
-                self.errorMessage = nil
-                print("🗣️ 识别结果: \(result)")
-
-                insertText(result)
-            } catch {
-                self.state = .idle
-                if case Vhisper.VhisperError.cancelled = error {
-                    print("⚠️ 识别已取消")
-                } else {
-                    self.errorMessage = error.localizedDescription
-                }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if self.state == .processing {
+                NSLog("\(ts()) ⚠️ 超时，强制清理")
+                self.forceCleanup()
             }
         }
     }
 
     func cancel() {
-        try? vhisper?.cancel()
+        // 取消流式识别
+        try? vhisper?.cancelStreaming()
+        forceCleanup()
+    }
+
+    /// 强制清理所有状态
+    private func forceCleanup() {
+        NSLog("\(ts()) 🧹 forceCleanup")
+        // 确保 Rust 端停止
+        try? vhisper?.cancelStreaming()
         state = .idle
         updateAppDelegateIcon(recording: false)
-
-        // 隐藏波形窗口并停止监听
         WaveformOverlayController.shared.hide()
         AudioLevelMonitor.shared.stopMonitoring()
     }
@@ -815,10 +915,7 @@ class VhisperManager: ObservableObject {
         // 关键点1: CGEventSource 用 nil (对应 Espanso 的 NULL)
         // 这样可以绕过某些系统限制
 
-        // 关键点2: 检查并释放 Shift 键
-        releaseShiftIfPressed()
-
-        // 关键点3: 转换为 UTF-16 并分块处理（每块最多 20 字符）
+        // 关键点2: 转换为 UTF-16 并分块处理（每块最多 20 字符）
         let utf16Chars = Array(text.utf16)
         let chunks = utf16Chars.chunked(into: 20)
 
@@ -834,6 +931,8 @@ class VhisperManager: ObservableObject {
                 continue
             }
             keyDown.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: &chars)
+            // 关键点3: 清除事件的修饰键标志，这样不会被当作快捷键
+            keyDown.flags = []
 
             // 创建按键释放事件（source = nil）
             guard let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else {
@@ -841,6 +940,7 @@ class VhisperManager: ObservableObject {
                 continue
             }
             keyUp.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: &chars)
+            keyUp.flags = []  // 同样清除修饰键标志
 
             // 关键点4: 使用 kCGHIDEventTap 发送
             keyDown.post(tap: .cghidEventTap)
@@ -856,18 +956,57 @@ class VhisperManager: ObservableObject {
 
     }
 
-    /// 检查并释放 Shift 键（如果按下）
-    /// Espanso 在发送前会先释放 Shift，避免字符变成大写
-    private func releaseShiftIfPressed() {
+    /// 释放所有修饰键（Shift、Command、Option、Control）
+    /// 这样 CGEvent 输入不会被系统当作快捷键处理
+    private func releaseAllModifiers() {
         guard let checkEvent = CGEvent(source: nil) else { return }
 
-        let shiftPressed = checkEvent.flags.contains(.maskShift)
-        if shiftPressed {
-            // 发送 Shift 释放事件
-            if let shiftUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Shift), keyDown: false) {
-                shiftUp.post(tap: .cghidEventTap)
-                usleep(1000)
+        let currentFlags = checkEvent.flags
+        var released = false
+
+        // 释放 Shift
+        if currentFlags.contains(.maskShift) {
+            if let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Shift), keyDown: false) {
+                keyUp.post(tap: .cghidEventTap)
+                released = true
             }
+        }
+
+        // 释放 Command（左右都释放）
+        if currentFlags.contains(.maskCommand) {
+            if let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Command), keyDown: false) {
+                keyUp.post(tap: .cghidEventTap)
+            }
+            if let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_RightCommand), keyDown: false) {
+                keyUp.post(tap: .cghidEventTap)
+            }
+            released = true
+        }
+
+        // 释放 Option
+        if currentFlags.contains(.maskAlternate) {
+            if let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Option), keyDown: false) {
+                keyUp.post(tap: .cghidEventTap)
+            }
+            if let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_RightOption), keyDown: false) {
+                keyUp.post(tap: .cghidEventTap)
+            }
+            released = true
+        }
+
+        // 释放 Control
+        if currentFlags.contains(.maskControl) {
+            if let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Control), keyDown: false) {
+                keyUp.post(tap: .cghidEventTap)
+            }
+            if let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_RightControl), keyDown: false) {
+                keyUp.post(tap: .cghidEventTap)
+            }
+            released = true
+        }
+
+        if released {
+            usleep(2000)  // 等待系统处理
         }
     }
 

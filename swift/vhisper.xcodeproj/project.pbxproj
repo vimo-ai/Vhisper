@@ -267,6 +267,27 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		48250830DEADBEEF003AE32C /* Deploy to Applications */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Deploy to Applications";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "# 自动部署到 /Applications\nif [ \"$CONFIGURATION\" = \"Debug\" ]; then\n    pkill -f vhisper 2>/dev/null || true\n    sleep 0.3\n    rm -rf /Applications/vhisper.app\n    cp -R \"$BUILT_PRODUCTS_DIR/vhisper.app\" /Applications/\n    # 使用开发者证书重新签名（保持签名标识一致）\n    codesign --force --deep --sign \"Apple Development\" /Applications/vhisper.app\n    echo \"✅ 已部署到 /Applications/vhisper.app\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		482507D42F01B6B5003AE32C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -290,27 +311,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		48250830DEADBEEF003AE32C /* Deploy to Applications */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Deploy to Applications";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/bash;
-			shellScript = "# 自动部署到 /Applications\nif [ \"$CONFIGURATION\" = \"Debug\" ]; then\n    pkill -f vhisper 2>/dev/null || true\n    sleep 0.3\n    rm -rf /Applications/vhisper.app\n    cp -R \"$BUILT_PRODUCTS_DIR/vhisper.app\" /Applications/\n    # 使用开发者证书重新签名（保持签名标识一致）\n    codesign --force --deep --sign \"Apple Development\" /Applications/vhisper.app\n    echo \"✅ 已部署到 /Applications/vhisper.app\"\nfi\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		482507E92F01B6B6003AE32C /* PBXTargetDependency */ = {
@@ -475,6 +475,10 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/vhisper/Frameworks/macos-arm64_x86_64",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vimo.voice.vhisper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -522,6 +526,10 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/vhisper/Frameworks/macos-arm64_x86_64",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vimo.voice.vhisper;
